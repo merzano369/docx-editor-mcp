@@ -98,7 +98,7 @@ Add the following to your Claude Desktop configuration file:
   "mcpServers": {
     "docx-editor": {
       "command": "python",
-      "args": ["C:\\path\\to\\docx-editor\\server.py"]
+      "args": ["C:\\path\\to\\docx-editor-mcp\\server.py"]
     }
   }
 }
@@ -113,7 +113,7 @@ Add to your VS Code settings or Kilocode configuration:
   "mcp.servers": {
     "docx-editor": {
       "command": "python",
-      "args": ["/path/to/docx-editor/server.py"]
+      "args": ["/path/to/docx-editor-mcp/server.py"]
     }
   }
 }
