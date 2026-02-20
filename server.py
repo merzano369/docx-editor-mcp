@@ -1,18 +1,354 @@
 from mcp.server.fastmcp import FastMCP
 from docx import Document
-from docx.shared import Pt, Mm, RGBColor, Inches, Twips
+from docx.shared import Pt, Mm, RGBColor, Inches, Twips, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.section import WD_ORIENT
+from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
 from docx.oxml.shared import OxmlElement, qn
 from docx.oxml.ns import nsmap
 import os
 import json
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 
 # Initialize FastMCP server
 mcp = FastMCP("docx-editor")
+def _find_paragraph_index(doc: Document, target_text: str = None, target_paragraph_index: int = None) -> int:
+    """
+    Helper function to find a paragraph index either by text or by direct index.
+    Returns the index, or -1 if not found.
+    """
+    if target_paragraph_index is not None:
+        if 0 <= target_paragraph_index < len(doc.paragraphs):
+            return target_paragraph_index
+        return -1
+        
+    if target_text:
+        for i, p in enumerate(doc.paragraphs):
+            if target_text in p.text:
+                return i
+    return -1
+
+@mcp.tool()
+def insert_header_near_text(filename: str = None, target_text: str = None, header_title: str = None, position: str = 'after', header_style: str = 'Heading 1', target_paragraph_index: int = None) -> str:
+    """
+    Inserts a header relative to a specific paragraph or text match.
+    """
+    global current_doc
+    doc = current_doc
+    if filename and os.path.exists(filename):
+        doc = Document(filename)
+    if not doc:
+        return "No active document. Call create_document first."
+        
+    if not header_title:
+        return "header_title is required."
+
+    p_idx = _find_paragraph_index(doc, target_text, target_paragraph_index)
+    if p_idx == -1:
+        return "Target paragraph not found."
+        
+    # Python-docx paragraph.insert_paragraph_before() inserts BEFORE the current paragraph.
+    # To insert AFTER, we find the NEXT paragraph and insert before it. 
+    # If it's the last paragraph, we just add_paragraph to the end of the document.
+    
+    target_p = doc.paragraphs[p_idx]
+    
+    if position == 'before':
+        new_p = target_p.insert_paragraph_before(header_title, style=header_style)
+    elif position == 'after':
+        if p_idx + 1 < len(doc.paragraphs):
+            next_p = doc.paragraphs[p_idx + 1]
+            new_p = next_p.insert_paragraph_before(header_title, style=header_style)
+        else:
+            new_p = doc.add_paragraph(header_title, style=header_style)
+    else:
+        return "Invalid position. Use 'before' or 'after'."
+        
+    if filename:
+        doc.save(filename)
+    return f"Inserted header '{header_title}' {position} paragraph {p_idx}."
+
+@mcp.tool()
+def insert_line_or_paragraph_near_text(filename: str = None, target_text: str = None, line_text: str = None, position: str = 'after', line_style: str = None, target_paragraph_index: int = None) -> str:
+    """
+    Inserts a paragraph relative to a specific paragraph or text match.
+    """
+    global current_doc
+    doc = current_doc
+    if filename and os.path.exists(filename):
+        doc = Document(filename)
+    if not doc:
+        return "No active document. Call create_document first."
+        
+    if not line_text:
+        return "line_text is required."
+
+    p_idx = _find_paragraph_index(doc, target_text, target_paragraph_index)
+    if p_idx == -1:
+        return "Target paragraph not found."
+        
+    target_p = doc.paragraphs[p_idx]
+    
+    if position == 'before':
+        new_p = target_p.insert_paragraph_before(line_text, style=line_style)
+    elif position == 'after':
+        if p_idx + 1 < len(doc.paragraphs):
+            next_p = doc.paragraphs[p_idx + 1]
+            new_p = next_p.insert_paragraph_before(line_text, style=line_style)
+        else:
+            new_p = doc.add_paragraph(line_text, style=line_style)
+    else:
+        return "Invalid position. Use 'before' or 'after'."
+        
+    if filename:
+        doc.save(filename)
+    return f"Inserted paragraph {position} paragraph {p_idx}."
+
+@mcp.tool()
+def insert_numbered_list_near_text(filename: str = None, target_text: str = None, list_items: list = None, position: str = 'after', target_paragraph_index: int = None, bullet_type: str = 'bullet') -> str:
+    """
+    Inserts a list (bullet or numbered) relative to a specific paragraph or text match.
+    """
+    global current_doc
+    doc = current_doc
+    if filename and os.path.exists(filename):
+        doc = Document(filename)
+    if not doc:
+        return "No active document. Call create_document first."
+        
+    if not list_items:
+        return "list_items is required."
+
+    p_idx = _find_paragraph_index(doc, target_text, target_paragraph_index)
+    if p_idx == -1:
+        return "Target paragraph not found."
+        
+    target_p = doc.paragraphs[p_idx]
+    
+    style_name = 'List Bullet' if bullet_type == 'bullet' else 'List Number'
+    
+    # We want to insert the items in order. 
+    # If inserting 'before', we insert item 1 before target, then item 2 before target, etc.
+    # Actually, inserting them sequentially before target means they would appear in reverse.
+    # So we insert them exactly where needed.
+    
+    if position == 'before':
+        # Insert all items before target_p, maintaining order
+        for item in list_items:
+            target_p.insert_paragraph_before(item, style=style_name)
+    elif position == 'after':
+        # To insert after and maintain order, we find the element AFTER target_p.
+        if p_idx + 1 < len(doc.paragraphs):
+            next_p = doc.paragraphs[p_idx + 1]
+            for item in list_items:
+                next_p.insert_paragraph_before(item, style=style_name)
+        else:
+            # If target_p is the last element, just append
+            for item in list_items:
+                doc.add_paragraph(item, style=style_name)
+    else:
+        return "Invalid position. Use 'before' or 'after'."
+        
+    if filename:
+        doc.save(filename)
+    return f"Inserted list of {len(list_items)} items {position} paragraph {p_idx}."
+
+@mcp.tool()
+def format_text(filename: str = None, paragraph_index: int = None, start_pos: int = 0, end_pos: int = None, bold: bool = None, italic: bool = None, underline: bool = None, color: str = None, font_size: int = None, font_name: str = None) -> str:
+    """
+    Formats a specific character range within a paragraph.
+    Due to Word's internal representation, this clears the paragraph and rebuilds it with the requested formatting applied to the specific range.
+    """
+    global current_doc
+    doc = current_doc
+    if filename and os.path.exists(filename):
+        doc = Document(filename)
+    if not doc:
+        return "No active document. Call create_document first."
+        
+    if paragraph_index is None or paragraph_index < 0 or paragraph_index >= len(doc.paragraphs):
+        return "Invalid paragraph index."
+        
+    p = doc.paragraphs[paragraph_index]
+    full_text = p.text
+    
+    if end_pos is None or end_pos > len(full_text):
+        end_pos = len(full_text)
+        
+    if start_pos < 0 or start_pos >= end_pos:
+        return "Invalid start_pos or end_pos."
+        
+    # We will clear the paragraph and rebuild it in 3 parts: before, target, after.
+    # To preserve paragraph-level styles, we only delete the runs inside it.
+    
+    p.clear()
+    
+    part1_text = full_text[:start_pos]
+    part2_text = full_text[start_pos:end_pos]
+    part3_text = full_text[end_pos:]
+    
+    if part1_text:
+        p.add_run(part1_text)
+        
+    if part2_text:
+        run = p.add_run(part2_text)
+        if bold is not None:
+            run.bold = bold
+        if italic is not None:
+            run.italic = italic
+        if underline is not None:
+            run.underline = underline
+        if font_size is not None:
+            run.font.size = Pt(font_size)
+        if font_name is not None:
+            run.font.name = font_name
+        if color is not None:
+            try:
+                c = color.replace('#', '')
+                if len(c) == 6:
+                    run.font.color.rgb = RGBColor(int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
+            except:
+                pass
+                
+    if part3_text:
+        p.add_run(part3_text)
+        
+    if filename:
+        doc.save(filename)
+    return f"Formatted text in paragraph {paragraph_index} from position {start_pos} to {end_pos}."
+
+@mcp.tool()
+def search_and_replace(filename: str = None, find_text: str = None, replace_text: str = None) -> str:
+    """
+    Replaces all occurrences of find_text with replace_text across all document paragraphs.
+    """
+    global current_doc
+    doc = current_doc
+    if filename and os.path.exists(filename):
+        doc = Document(filename)
+    if not doc:
+        return "No active document. Call create_document first."
+        
+    if not find_text:
+        return "find_text is required."
+        
+    if replace_text is None:
+        replace_text = ""
+        
+    replace_count = 0
+    
+    # Process all normal paragraphs
+    for p in doc.paragraphs:
+        if find_text in p.text:
+            text = p.text
+            new_text = text.replace(find_text, replace_text)
+            p.clear()
+            p.add_run(new_text)
+            replace_count += 1
+            
+    # Process all table cells
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    if find_text in p.text:
+                        text = p.text
+                        new_text = text.replace(find_text, replace_text)
+                        p.clear()
+                        p.add_run(new_text)
+                        replace_count += 1
+                        
+    if filename:
+        doc.save(filename)
+    return f"Replaced '{find_text}' with '{replace_text}' in {replace_count} elements."
+
+@mcp.tool()
+def delete_paragraph(filename: str = None, paragraph_index: int = None) -> str:
+    """
+    Deletes a paragraph by its internal index.
+    """
+    global current_doc
+    doc = current_doc
+    if filename and os.path.exists(filename):
+        doc = Document(filename)
+    if not doc:
+        return "No active document. Call create_document first."
+        
+    if paragraph_index is None or paragraph_index < 0 or paragraph_index >= len(doc.paragraphs):
+        return "Invalid paragraph index."
+        
+    p = doc.paragraphs[paragraph_index]
+    
+    try:
+        p._element.getparent().remove(p._element)
+    except Exception as e:
+        return f"Error deleting paragraph: {e}"
+        
+    if filename:
+        doc.save(filename)
+    return f"Deleted paragraph {paragraph_index}."
+
+def _hex_to_rgb(hex_str: str):
+    try:
+        hex_str = hex_str.replace('#', '')
+        if len(hex_str) == 6:
+            return RGBColor(int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16))
+    except:
+        pass
+    return None
+
+@mcp.tool()
+def create_custom_style(filename: str = None, style_name: str = None, bold: bool = None, italic: bool = None, font_size: int = None, font_name: str = None, color: str = None, base_style: str = 'Normal') -> str:
+    """
+    Creates a new custom Paragraph style based on an existing style and configures its font properties.
+    """
+    global current_doc
+    doc = current_doc
+    if filename and os.path.exists(filename):
+        doc = Document(filename)
+    if not doc:
+        return "No active document. Call create_document first."
+        
+    if not style_name:
+        return "style_name is required."
+        
+    # Check if style already exists
+    try:
+        existing = doc.styles[style_name]
+        return f"Style '{style_name}' already exists."
+    except KeyError:
+        pass
+        
+    # Get base style
+    try:
+        base = doc.styles[base_style]
+    except KeyError:
+        return f"Base style '{base_style}' does not exist."
+        
+    # Create style
+    # WD_STYLE_TYPE.PARAGRAPH = 1
+    new_style = doc.styles.add_style(style_name, 1)
+    new_style.base_style = base
+    
+    if bold is not None:
+        new_style.font.bold = bold
+    if italic is not None:
+        new_style.font.italic = italic
+    if font_size is not None:
+        new_style.font.size = Pt(font_size)
+    if font_name is not None:
+        new_style.font.name = font_name
+    if color is not None:
+        rgb = _hex_to_rgb(color)
+        if rgb:
+            new_style.font.color.rgb = rgb
+            
+    if filename:
+        doc.save(filename)
+    return f"Created custom paragraph style '{style_name}'."
+
 
 # Global state for the current document
 # In a more complex server, we would use a dictionary mapping session_ids to documents
@@ -177,6 +513,272 @@ def add_list_item(text: str, style: str = 'List Bullet') -> str:
     
     current_doc.add_paragraph(text, style=style)
     return "Added list item."
+
+@mcp.tool()
+def add_table(rows: int, cols: int, style: str = 'Table Grid', alignment: str = 'CENTER') -> str:
+    """
+    Adds a new table to the active document.
+    """
+    global current_doc
+    if not current_doc:
+        return "No active document. Call create_document first."
+    
+    table = current_doc.add_table(rows=rows, cols=cols)
+    if style:
+        try:
+            table.style = style
+        except Exception as e:
+            return f"Error applying style to table: {e}. Table was created with default style."
+    
+    # Try applying alignment if supported
+    try:
+        if alignment == 'CENTER':
+            table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        elif alignment == 'LEFT':
+            table.alignment = WD_TABLE_ALIGNMENT.LEFT
+        elif alignment == 'RIGHT':
+            table.alignment = WD_TABLE_ALIGNMENT.RIGHT
+    except Exception:
+        pass # Not all tables support alignment in the same way depending on python-docx version
+        
+    return f"Added new table ({rows} rows, {cols} columns, style: {style})."
+
+@mcp.tool()
+def add_table_row(table_index: int) -> str:
+    """
+    Appends a new empty row to the specified table.
+    """
+    global current_doc
+    if not current_doc:
+        return "No active document. Call create_document first."
+    
+    try:
+        table = current_doc.tables[table_index]
+    except IndexError:
+        return f"Table index {table_index} out of range."
+        
+    table.add_row()
+    return f"Added new row to table {table_index}. Table now has {len(table.rows)} rows."
+
+@mcp.tool()
+def add_table_column(table_index: int, width_pt: int = None) -> str:
+    """
+    Adds a new column to the specified table.
+    """
+    global current_doc
+    if not current_doc:
+        return "No active document. Call create_document first."
+    
+    try:
+        table = current_doc.tables[table_index]
+    except IndexError:
+        return f"Table index {table_index} out of range."
+        
+    width = Pt(width_pt) if width_pt else None
+    table.add_column(width)
+    return f"Added new column to table {table_index}. Table now has {len(table.columns)} columns."
+
+@mcp.tool()
+def set_table_cell(table_index: int, row_index: int, col_index: int, text: str, alignment: str = None, bold: bool = False, italic: bool = False) -> str:
+    """
+    Sets the text of a specific cell and applies basic text formatting and paragraph alignment.
+    """
+    global current_doc
+    if not current_doc:
+        return "No active document. Call create_document first."
+    
+    try:
+        table = current_doc.tables[table_index]
+        cell = table.cell(row_index, col_index)
+    except IndexError:
+        return f"Table or cell index out of range."
+        
+    # Clear existing text and set new text
+    cell.text = ""
+    # Usually a cell has one empty paragraph when created
+    if not cell.paragraphs:
+        p = cell.add_paragraph()
+    else:
+        p = cell.paragraphs[0]
+        
+    run = p.add_run(text)
+    
+    if bold:
+        run.bold = True
+    if italic:
+        run.italic = True
+        
+    if alignment:
+        if alignment == 'CENTER':
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        elif alignment == 'LEFT':
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        elif alignment == 'RIGHT':
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        elif alignment == 'JUSTIFY':
+            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            
+    return f"Updated cell ({row_index}, {col_index}) in table {table_index}."
+
+@mcp.tool()
+def merge_table_cells(table_index: int, start_row: int, start_col: int, end_row: int, end_col: int) -> str:
+    """
+    Merges a rectangular range of cells into one.
+    """
+    global current_doc
+    if not current_doc:
+        return "No active document. Call create_document first."
+    
+    try:
+        table = current_doc.tables[table_index]
+        cell_start = table.cell(start_row, start_col)
+        cell_end = table.cell(end_row, end_col)
+    except IndexError:
+        return f"Table or cell indices out of range."
+        
+    cell_start.merge(cell_end)
+    return f"Merged cells from ({start_row}, {start_col}) to ({end_row}, {end_col}) in table {table_index}."
+
+@mcp.tool()
+def set_table_cell_style(table_index: int, row_index: int, col_index: int, shading_color: str = None, vertical_alignment: str = None) -> str:
+    """
+    Applies background color (shading) and vertical alignment to a cell.
+    Parameters:
+    - shading_color: Hex color string (e.g. 'FF0000') or None.
+    - vertical_alignment: 'TOP', 'CENTER', or 'BOTTOM'
+    """
+    global current_doc
+    if not current_doc:
+        return "No active document. Call create_document first."
+    
+    try:
+        table = current_doc.tables[table_index]
+        cell = table.cell(row_index, col_index)
+    except IndexError:
+        return f"Table or cell index out of range."
+
+    # Set Vertical Alignment
+    if vertical_alignment:
+        if vertical_alignment == 'TOP':
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+        elif vertical_alignment == 'CENTER':
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        elif vertical_alignment == 'BOTTOM':
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.BOTTOM
+
+    # Set Shading
+    if shading_color:
+        try:
+            # Remove # if present
+            shading_color = shading_color.replace('#', '')
+            
+            tcPr = cell._tc.get_or_add_tcPr()
+            
+            # Check if shading element already exists
+            shdList = tcPr.xpath('w:shd')
+            if shdList:
+                shdList[0].set(qn('w:fill'), shading_color)
+            else:
+                shd = OxmlElement('w:shd')
+                shd.set(qn('w:val'), 'clear')
+                shd.set(qn('w:color'), 'auto')
+                shd.set(qn('w:fill'), shading_color)
+                tcPr.append(shd)
+        except Exception as e:
+            return f"Error setting shading color: {e}"
+
+    return f"Updated style for cell ({row_index}, {col_index}) in table {table_index}."
+
+@mcp.tool()
+def set_table_borders(table_index: int, border_size: int = 4, border_color: str = 'auto') -> str:
+    """
+    Applies borders to the table via OXML modification.
+    border_size is typically 2, 4, 8, etc (in eighths of a point).
+    """
+    global current_doc
+    if not current_doc:
+        return "No active document. Call create_document first."
+    
+    try:
+        table = current_doc.tables[table_index]
+    except IndexError:
+        return f"Table index {table_index} out of range."
+
+    try:
+        border_color = border_color.replace('#', '')
+        
+        tblPr = table._tbl.tblPr
+        tblBorders = tblPr.first_child_found_in("w:tblBorders")
+        
+        if tblBorders is None:
+            tblBorders = OxmlElement('w:tblBorders')
+            tblPr.append(tblBorders)
+            
+        # Clean existing borders
+        for border in list(tblBorders):
+            tblBorders.remove(border)
+
+        val_type = "single"
+        for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
+            border = OxmlElement(f'w:{border_name}')
+            border.set(qn('w:val'), val_type)
+            border.set(qn('w:sz'), str(border_size))
+            border.set(qn('w:space'), '0')
+            border.set(qn('w:color'), border_color)
+            tblBorders.append(border)
+            
+    except Exception as e:
+        return f"Error setting table borders: {e}"
+
+    return f"Updated borders for table {table_index}."
+
+@mcp.tool()
+def delete_table_row(table_index: int, row_index: int) -> str:
+    """
+    Deletes a specific row from a table.
+    """
+    global current_doc
+    if not current_doc:
+        return "No active document. Call create_document first."
+    
+    try:
+        table = current_doc.tables[table_index]
+        row = table.rows[row_index]
+    except IndexError:
+        return f"Table or row index out of range."
+        
+    try:
+        row._element.getparent().remove(row._element)
+    except Exception as e:
+        return f"Error deleting row: {e}"
+        
+    return f"Deleted row {row_index} from table {table_index}."
+
+@mcp.tool()
+def delete_table_column(table_index: int, col_index: int) -> str:
+    """
+    Deletes a specific column from a table.
+    """
+    global current_doc
+    if not current_doc:
+        return "No active document. Call create_document first."
+    
+    try:
+        table = current_doc.tables[table_index]
+        # Test if column index is valid
+        if col_index >= len(table.columns):
+            return "Column index out of range."
+    except IndexError:
+        return f"Table index out of range."
+        
+    try:
+        for row in table.rows:
+            cell = row.cells[col_index]
+            cell._element.getparent().remove(cell._element)
+    except Exception as e:
+        return f"Error deleting column: {e}"
+        
+    return f"Deleted column {col_index} from table {table_index}."
 
 @mcp.tool()
 def save_document(filename: str = None) -> str:

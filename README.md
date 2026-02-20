@@ -138,6 +138,27 @@ Add to your VS Code settings or Kilocode configuration:
 | [`add_paragraph(text, alignment, indent_first_line)`](server.py:113) | Adds a paragraph with alignment options |
 | [`add_formatted_text(paragraph_index, text, bold, italic, font_size, lang)`](server.py:141) | Appends styled text to a paragraph |
 | [`add_list_item(text, style)`](server.py:170) | Adds bullet or numbered list item |
+| [`insert_header_near_text(target_text, header_title, position)`](server.py:50) | Inserts a header relative to existing text |
+| [`insert_line_or_paragraph_near_text(target_text, line_text, position)`](server.py:80) | Inserts a paragraph relative to existing text |
+| [`insert_numbered_list_near_text(target_text, list_items, position, bullet_type)`](server.py:110) | Inserts a list relative to existing text |
+| [`format_text(paragraph_index, start_pos, end_pos, bold, italic...)`](server.py:150) | Formats a specific character range in a paragraph |
+| [`search_and_replace(find_text, replace_text)`](server.py:200) | Replaces text globally across the document |
+| [`delete_paragraph(paragraph_index)`](server.py:250) | Deletes a paragraph by index |
+| [`create_custom_style(style_name, bold, italic, color, font_size...)`](server.py:300) | Creates a custom paragraph style |
+
+### Table Manipulation
+
+| Tool | Description |
+|------|-------------|
+| [`add_table(rows, cols, style, alignment)`](server.py:180) | Creates a new table |
+| [`add_table_row(table_index)`](server.py:210) | Adds a new row to a table |
+| [`add_table_column(table_index, width_pt)`](server.py:230) | Adds a new column to a table |
+| [`set_table_cell(table_index, row, col, text, alignment, bold, italic)`](server.py:250) | Sets cell text and basic formatting |
+| [`merge_table_cells(table_index, start_row, start_col, end_row, end_col)`](server.py:280) | Merges a rectangular range of cells |
+| [`set_table_cell_style(table_index, row, col, shading_color, vertical_alignment)`](server.py:300) | Sets cell background color and alignment |
+| [`set_table_borders(table_index, border_size, border_color)`](server.py:350) | Applies custom borders to a table |
+| [`delete_table_row(table_index, row_index)`](server.py:390) | Deletes a specific row |
+| [`delete_table_column(table_index, col_index)`](server.py:410) | Deletes a specific column |
 
 ### Parameter Extraction
 
