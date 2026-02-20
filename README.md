@@ -1,6 +1,3 @@
-# docx-editor-mcp
-A powerful MCP server for creating, editing, and extracting data from Microsoft Word documents.
-
 # DOCX Editor MCP Server
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
